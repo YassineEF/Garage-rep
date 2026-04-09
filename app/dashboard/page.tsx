@@ -1,67 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { UserButton } from "@clerk/nextjs";
+import { supabase } from "../../lib/supabase";
 
-// Nos fausses données pour commencer (Mock data)
-const fakeAppointments = [
-  {
-    id: 1,
-    name: "Michel Dubois",
-    phone: "06 11 22 33 44",
-    date: "2026-02-25T14:30",
-    status: "Programmé",
-  },
-  {
-    id: 2,
-    name: "Sarah Connor",
-    phone: "06 99 88 77 66",
-    date: "2026-02-26T09:00",
-    status: "Programmé",
-  },
-];
+interface Appointment {
+  id: number;
+  client_name: string;
+  client_phone: string;
+  appointement_date: string;
+  status: string;
+}
 
 export default function Dashboard() {
   // États pour le formulaire
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [date, setDate] = useState("");
+  const [client_name, setClientName] = useState("");
+  const [client_phone, setClientPhone] = useState("");
+  const [appointement_date, setAppointementDate] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "success">("idle");
 
   // État pour notre liste de rendez-vous
-  const [appointments, setAppointments] = useState(fakeAppointments);
+  const [appointements, setAppointements] = useState<Appointment[]>([]);
+
+  useEffect(() => {
+    fetchAppointments();
+  }, []);
+
+  const fetchAppointments = async () => {
+    const { data, error } = await supabase
+      .from("appointments")
+      .select("*")
+      .order("appointement_date", { ascending: true });
+    
+    if (error) {
+      console.error("Error fetching appointments:", error);
+    } else {
+      setAppointements(data || []);
+    }
+  };
 
   // Fonction pour ajouter un RDV
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStatus("loading");
+    console.log(client_name,client_phone,appointement_date);
+    
 
-    setTimeout(() => {
-      // On crée un nouveau RDV avec un faux ID
-      const newAppointment = {
-        id: Date.now(),
-        name: name,
-        phone: phone,
-        date: date,
-        status: "Programmé",
-      };
+    const newAppointment = {
+      client_name,
+      client_phone,
+      appointement_date,
+      status: "Programmé",
+    };
 
+    const { data, error } = await supabase
+      .from("appointments")
+      .insert([newAppointment])
+      .select();
+
+    if (error) {
+      console.error("Error adding appointment:", error);
+      setStatus("idle");
+      return;
+    }
+
+    if (data && data.length > 0) {
       // On l'ajoute au début de notre liste
-      setAppointments([newAppointment, ...appointments]);
+      setAppointements([data[0], ...appointements]);
+    }
 
-      setStatus("success");
-      setName("");
-      setPhone("");
-      setDate("");
+    setStatus("success");
+    setClientName("");
+    setClientPhone("");
+    setAppointementDate("");
 
-      setTimeout(() => setStatus("idle"), 3000);
-    }, 800);
+    setTimeout(() => setStatus("idle"), 3000);
   };
 
   // Fonction pour supprimer un RDV (Annulation)
-  const handleDelete = (idToDelete: number) => {
+  const handleDelete = async (idToDelete: number) => {
     // Demande confirmation au garagiste pour éviter les erreurs
     if (window.confirm("Êtes-vous sûr de vouloir annuler ce rappel SMS ?")) {
-      setAppointments(appointments.filter((app) => app.id !== idToDelete));
+      const { error } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("id", idToDelete);
+
+      if (error) {
+        console.error("Error deleting appointment:", error);
+      } else {
+        setAppointements(appointements.filter((app) => app.id !== idToDelete));
+      }
     }
   };
 
@@ -81,13 +110,15 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Tableau de Bord - GarageRep 🛠️
-        </h1>
-        <p className="text-gray-500 mt-1">
-          Gérez vos rappels automatisés et vos avis Google.
-        </p>
+      <div className="mb-8 flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Tableau de Bord - GarageRep 🛠️</h1>
+          <p className="text-gray-500 mt-1">Gérez vos rappels automatisés et vos avis Google.</p>
+        </div>
+        {/* Le bouton magique de profil Clerk */}
+        <div className="bg-white p-2 rounded-full shadow-sm">
+          <UserButton />
+        </div>
       </div>
 
       {/* Layout en grille : 1 colonne sur mobile, 3 colonnes sur PC */}
@@ -107,8 +138,8 @@ export default function Dashboard() {
                 <input
                   type="text"
                   required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={client_name}
+                  onChange={(e) => setClientName(e.target.value)}
                   placeholder="Ex: Jean Dupont"
                   className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 />
@@ -121,8 +152,8 @@ export default function Dashboard() {
                 <input
                   type="tel"
                   required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  value={client_phone}
+                  onChange={(e) => setClientPhone(e.target.value)}
                   placeholder="Ex: 06 12 34 56 78"
                   className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 />
@@ -135,8 +166,8 @@ export default function Dashboard() {
                 <input
                   type="datetime-local"
                   required
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
+                  value={appointement_date}
+                  onChange={(e) => setAppointementDate(e.target.value)}
                   className="w-full px-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
@@ -165,7 +196,7 @@ export default function Dashboard() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
               <h2 className="text-xl font-semibold text-gray-800">
-                Rappels à venir ({appointments.length})
+                Rappels à venir ({appointements.length})
               </h2>
             </div>
 
@@ -182,23 +213,23 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {appointments.length === 0 ? (
+                  {appointements.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="p-8 text-center text-gray-500">
                         Aucun rendez-vous prévu. Ajoutez-en un !
                       </td>
                     </tr>
                   ) : (
-                    appointments.map((app) => (
+                    appointements.map((app) => (
                       <tr key={app.id} className="hover:bg-gray-50 transition">
                         <td className="p-4 font-medium text-gray-900">
-                          {app.name}
+                          {app.client_name}
                         </td>
                         <td className="p-4 text-gray-600 text-sm">
-                          {app.phone}
+                          {app.client_phone}
                         </td>
                         <td className="p-4 text-gray-600 text-sm">
-                          {formatDate(app.date)}
+                          {formatDate(app.appointement_date)}
                         </td>
                         <td className="p-4">
                           <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
